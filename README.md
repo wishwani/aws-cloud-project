@@ -33,13 +33,13 @@ The Client will send a request, the Worker will satisfy it and generate a file c
 At the end when the request is satisfied and the Client downloads his resultFile.txt, we empty the queues to open the door for new client(s) requests to the server.
 And at this point the Client will terminate, while the Worker keep waiting for a new request (forever) until we choose to terminate it manually.
 
-**note: Here we have implemented this as a requirement. It shows how the client can download the output csv files when worker running on the EC2 instance. This is not the whole process for the application. We choosed the lambda function is good for the implementation of whole process**
+**Note: Here we have implemented this as a requirement. It shows how the client can download the output csv files when worker running on the EC2 instance. This is not the whole process for the application. We choosed the lambda function is good for the implementation of whole process**
 
 **2. Client, Worker as a Lambda Function and Consolidator**
 
 1- Create three Java maven projects for the client(name:ProjectClient), the worker(name:HandlerS3), the consolidator(name:Consolidator).
 
-2- Create: 2 S3 buckets(name:uploadbucket-worker,name:summary-bucket) and 1 Fifo queues(name:OutputFifo.fifo), Lambda function(name:workerFunction)
+2- Create: 2 S3 buckets(name:uploadbucket-worker, name:summary-bucket) and 1 Fifo queues(name:OutputFifo.fifo), Lambda function(name:workerFunction)
 * uploadbucket =  for uploading input csv files
 * summary-bucket = for storing output csv files
 * set the bucket 'uploadbucket' in the triggering part in Lambda function (workerFunction)
@@ -49,6 +49,8 @@ And at this point the Client will terminate, while the Worker keep waiting for a
 4- Deploy the code by uploading generated Jar file in to the lambda function.
 
 5- Run Client.java locally. Here I passe the input file name as a command line argument as an example 01-10-2022-store5.csv
+
+**Note: Here we are uploading 2 input csv files (01-10-2022-store5.csv, 02-10-2022-store5). In our project we have 20 input csv files. It is difficult to upload all the filesin this way. But for the consolidator part it is required to upload all input csv files and storing all output csv files in a bucket. Therefore here we are uploading all the input csv files into a bucket (uploadbucket)using AWS console manually.**
 
 *Then we can see all the input csv files in the bucket-'uploadbucket' and the output csv files in the bucket-'summary-bucket'. In the summary-bucket there are 2 folders according to the dates(01-10-2022/,02-10-2022/).In this folders we can see the summary output csv files like store1.csv, store2.csv etc*
 
