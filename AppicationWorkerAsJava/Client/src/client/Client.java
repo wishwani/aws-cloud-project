@@ -17,9 +17,8 @@ import software.amazon.awssdk.services.sqs.model.*;
 
 public class Client {
 	
-	
-	public static final String bucketName = "mybucket88888888777";
-
+	public static final String srcBucketName = "mybucket88888888777";
+	public static final String dstBucketName = "summary-bucket";
 	
 	public static final String filePath = "/Users/sathish.bowatta/eclipse/2022/Client/sales-data/";
 	
@@ -35,11 +34,8 @@ public class Client {
 		      System.exit(1);
 		    }
 		
-
 	    String inputFile = args[0].toString();
-	   
-
-        Region region = Region.US_EAST_1;   //Paris
+	    Region region = Region.US_EAST_1;   
         S3Client s3 = S3Client.builder()
                 .region(region)
                 .build();
@@ -48,42 +44,39 @@ public class Client {
                 .region(region)
                 .build();
         
-
-        /*** Step "1" ***/
         uploadFileToS3(s3 , inputFile);	
         
-        /*** Step "2" ***/
-    	sendMessage(sqsClient , queueInboxURL ,  inputFile);
+        sendMessage(sqsClient , queueInboxURL ,  inputFile);
     	
         while(true) {
         	List<Message> msgs = receiveMessage(sqsClient , queueOutboxURL);
         	if (msgs!=null) {
-        		
-            	/*** Step "7" ***/
-                String resultFile = msgs.get(0).body();
-                
-                /*** Step "8" ***/
+            	String resultFile = msgs.get(0).body();
                 downloadFileFromS3(s3 , resultFile);
-                
-                //Received the result -> Delete the Outbox Msg (Sent by the Worker)
-        		emptyQueue(sqsClient,queueOutboxURL, msgs);
+                emptyQueue(sqsClient, queueOutboxURL, msgs);
             	break;
         	}
         	
-        	System.out.println("Message is not recieved yet, will waiting again for 1 minute");
-           	//Thread.sleep(60000);	//1 minute
         	Thread.sleep(10000);	//10 seconds
         }
-
-        
 	}
 	
 	public static void downloadFileFromS3(S3Client s3 , String fileName) throws IOException {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
+                .bucket(dstBucketName)
                 .key(fileName)
                 .build();
 
+        File dir = new File(fileName);
+
+		if (!dir.exists()) {
+			dir.mkdirs();
+		}
+		Files.deleteIfExists(Paths.get(fileName));
+		s3.getObject(getObjectRequest, ResponseTransformer.toFile(Paths.get(fileName)));
+		System.out.println("Client downloaded the " + fileName + "from S3 successfully!");
+		
+		
         Files.deleteIfExists(Paths.get(fileName));	//Delets the file if it already exists
         s3.getObject(getObjectRequest , ResponseTransformer.toFile(Paths.get(fileName)));
         System.out.println("Client downloaded the results file from S3 successfully!");
@@ -91,7 +84,7 @@ public class Client {
 
 	public static void uploadFileToS3(S3Client s3, String fileName) throws IOException {
     	PutObjectRequest objectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
+                .bucket(srcBucketName)
                 .key(fileName)
                 .build();
     	
@@ -109,7 +102,7 @@ public class Client {
 	                .messageGroupId(""+msgId)
 	                .messageDeduplicationId(""+msgId)
 	                .build());
-	    	System.out.println("Message Was Successfully Sent By the Client To " + queueUrl);
+	    	System.out.println("Message was successfully sent by the client to " + queueUrl);
 	    	
 	    }
 
@@ -122,10 +115,10 @@ public class Client {
 	                .build();
 	            List<Message> messages = sqsClient.receiveMessage(receiveMessageRequest).messages();
 	            if(messages.isEmpty()) {
-	            	System.out.print("Outbox Queue is still empty ");
+	            	
 	            	return null;
 	            }
-	            System.out.println("Message: [" + messages.get(0).body() + "] Was Successfully Received from: " + queueURL);
+	            System.out.println("Message: [" + messages.get(0).body() + "] was successfully received from: " + queueURL);
 	            return messages;
 	            
 	        } catch (SqsException e) {
@@ -143,7 +136,7 @@ public class Client {
                     .receiptHandle(message.receiptHandle())
                     .build();
                 sqsClient.deleteMessage(deleteMessageRequest);
-                System.out.println("All Messages Were Deleted Successfully from: " + queueURL);
+                System.out.println("All messages were deleted successfully from: " + queueURL);
             }
         } catch (SqsException e) {
             System.err.println(e.awsErrorDetails().errorMessage());

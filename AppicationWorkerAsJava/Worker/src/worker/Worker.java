@@ -40,13 +40,11 @@ import java.util.Set;
 
 public class Worker {
 	
-	public static final String bucketName = "mybucket88888888777";
+	public static final String srcBucketName = "mybucket88888888777";
+	public static final String dstBucketName = "summary-bucket";
 	
 	public static final String filePath = "/home/ec2-user/";
-	public static final String resultFile = "resultFile.txt";
-    
-    //public static final String queueInboxName = "InputFifo.fifo";
-    //public static final String queueOutboxName = "OutputFifo.fifo";
+	public static String resultFile = "";
 	
 	public static void main(String[] args) throws IOException, InterruptedException {
 
@@ -59,34 +57,21 @@ public class Worker {
         SqsClient sqsClient = SqsClient.builder()
               .region(region)
                 .build();
-        
-        //Note: Create the Queues only one time (Run the 2 statements below only once):
-        //String queueInboxURL  = createQueue(sqsClient, queueInboxName);
-        //String queueOutboxURL = createQueue(sqsClient, queueOutboxName);
-        
-        //System.out.println(queueInboxURL);	//https://sqs.eu-west-3.amazonaws.com/406165177414/inboxQueue.fifo
-        //System.out.println(queueOutboxURL);	//https://sqs.eu-west-3.amazonaws.com/406165177414/outboxQueue.fifo
-        
-        //If this is not the first run (Queues already created) then use these 2 lines:
+
         String queueInboxURL  = "https://sqs.us-east-1.amazonaws.com/315434705354/InputFifo.fifo";
         String queueOutboxURL = "https://sqs.us-east-1.amazonaws.com/315434705354/OutputFifo.fifo";
-       
-        
+
         while(true) {
         	
             List<Message> msgs = receiveMessage(sqsClient , queueInboxURL);
-            
+
         	if (msgs!=null) {
-        		   	
-                    /*** Step "3" ***/
                     String inputFile = msgs.get(0).body();
-                    
-                    /*** Step "4" ***/
+
             		downloadFileFromS3(s3 , inputFile);
 
-            		/*** Step "5" ***/
-            		calculation(new File(inputFile),resultFile);
-            		uploadFileToS3(s3 , resultFile);
+            		calculation(new File(inputFile));
+            		//uploadFileToS3(s3 , resultFile);
                     
             		/*** Step "6" ***/
                 	sendMessage(sqsClient , queueOutboxURL ,  resultFile);
@@ -100,30 +85,13 @@ public class Worker {
         		Thread.sleep(10000);	//10 seconds
         	}    
         
-        //We can also try step by step:
-
-        /*** Step "3" ***/
-        //List<Message> msgs = receiveMessage(sqsClient , queueInboxURL);
-        //String inputFile = msgs.get(0).body();
         
-        /*** Step "4" ***/
-        //String inputFile = "sales.csv";
-		//downloadFileFromS3(s3 , inputFile);
-
-		/*** Step "5" ***/
-		//calculation(new File(inputFile),resultFile);
-		//uploadFileToS3(s3 , resultFile);
-        
-		/*** Step "6" ***/
-    	//sendMessage(sqsClient , queueOutboxURL ,  resultFile);
-        
-        //emptyQueue(sqsClient,queueInboxURL,msgs);
     	
 	}
 	
 	public static void downloadFileFromS3(S3Client s3 , String fileName) throws IOException {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
+                .bucket(srcBucketName)
                 .key(fileName)
                 .build();
 
@@ -134,7 +102,7 @@ public class Worker {
 
 	public static void uploadFileToS3(S3Client s3, String fileName) throws IOException {
     	PutObjectRequest objectRequest = PutObjectRequest.builder()
-                .bucket(bucketName)
+                .bucket(dstBucketName)
                 .key(fileName)
                 .build();
     	
@@ -226,11 +194,18 @@ public class Worker {
     
 	
     
-public static void calculation(File inputFile, String resultFile) {
+public static void calculation(File inputFile) {
+	
+	Region region = Region.US_EAST_1;	
+    
+    S3Client s3 = S3Client.builder()
+            .region(region)
+            .build();
+    
 		
 	try {
 	final BufferedReader reader = new BufferedReader(new FileReader(inputFile));
-	PrintWriter writer = new PrintWriter(resultFile, "UTF-8");
+	//PrintWriter writer = new PrintWriter(resultFile, "UTF-8");
 
 	final DecimalFormat df = new DecimalFormat("0.00");
 
@@ -277,25 +252,28 @@ public static void calculation(File inputFile, String resultFile) {
 				map.put(key, arr);
 			}
 		}
-		
-		//String dstKey = timestamp.split(" ")[0].replace('/', '-') +  "/"  + store + ".csv";
-		
 		reader.close();
-       
 		
-		writer.println("product/store,quantity,profit,sold");
+		String dstKey = timestamp.split(" ")[0].replace('/', '-') +  "/"  + store + ".csv";
+		resultFile = dstKey;
 		
-		
-		writer.println(store + "," + Integer.toString((int)total_quantity) + "," +  df.format(total_profit)+ "," +  df.format(total_sold));
+		StringWriter stringWriter = new StringWriter();
+		PrintWriter printWriter = new PrintWriter(stringWriter);
+
+		printWriter.println("product/store,quantity,profit,sold");
+		printWriter.println(store + "," + Integer.toString((int)total_quantity) + "," +  df.format(total_profit)+ "," +  df.format(total_sold));
 		
 		
 		map.entrySet().forEach(entry -> {
-			writer.println(entry.getKey() + "," + (int) entry.getValue()[0] + "," + df.format(entry.getValue()[1])+  "," + df.format(entry.getValue()[2]));
+			printWriter.println(entry.getKey() + "," + (int) entry.getValue()[0] + "," + df.format(entry.getValue()[1])+  "," + df.format(entry.getValue()[2]));
 			
 		});
 		
 		
-		writer.close();
+		printWriter.close();
+		
+		PutObjectRequest objectRequest = PutObjectRequest.builder().bucket(dstBucketName).key(dstKey).build();
+		s3.putObject(objectRequest, RequestBody.fromString(stringWriter.toString()));
 		
 		
 	} catch (IOException e) {
