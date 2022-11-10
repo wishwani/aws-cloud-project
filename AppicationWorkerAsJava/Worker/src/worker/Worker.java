@@ -73,7 +73,7 @@ public class Worker {
             		calculation(new File(inputFile));
             		//uploadFileToS3(s3 , resultFile);
                     
-            		/*** Step "6" ***/
+            		
                 	sendMessage(sqsClient , queueOutboxURL ,  resultFile);
                 	
                 	//Request was achieved successfully -> Delete the Inbox Msg (Sent by the Client)
